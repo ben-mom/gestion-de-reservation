@@ -1,145 +1,172 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import axios from "axios";
 
 export default function Dashboard() {
-  const [reservations, setReservations] = useState([
-    { id: 734813, client: "Marie. ", date: "2018-02-27", total: "10.00", status: "Confirmée", paiement: "Payé" },
-    { id: 750000, client: "Eliser", date: "2018-02-27", total: "108.00", status: "Confirmée", paiement: "Payé" },
-    { id: 768034, client: "Cantona", date: "2018-02-27", total: "47.00", status: "Annulée", paiement: "Annulé" },
-  ]);
 
-  const [filters, setFilters] = useState({ client: "", status: "", date: "" });
+  const [events, setEvents] = useState<any[]>([]);
   const [page, setPage] = useState(1);
+  const [toast, setToast] = useState("");
+  const [editId, setEditId] = useState<number | null>(null);
   const perPage = 5;
 
-  const filtered = reservations.filter((r) =>
-    (filters.client === "" || r.client.toLowerCase().includes(filters.client.toLowerCase())) &&
-    (filters.status === "" || r.status === filters.status) &&
-    (filters.date === "" || r.date === filters.date)
-  );
+  // ---------------------
+  // 🔥 Charger les events
+  // ---------------------
+  const loadEvents = async () => {
+    try {
+      const res = await axios.get("http://localhost:3333/events");
+      setEvents(res.data);
+    } catch (err) {
+      console.log(err);
+      showToast("Erreur lors du chargement");
+    }
+  };
 
-  const pages = Math.ceil(filtered.length / perPage);
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage);
+  useEffect(() => {
+    loadEvents();
+  }, []);
 
-  const addReservation = (e:any) => {
+  // ------------------------
+  //  Toast messages
+  // ------------------------
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 2500);
+  };
+
+  
+  // Ajouter et Modifier Event
+  
+  const saveEvent = async (e: any) => {
     e.preventDefault();
+
     const form = new FormData(e.target);
-    const newRes = {
-      id: Math.floor(Math.random() * 1000000),
-      client: form.get('client'),
-      date: form.get('date'),
-      total: form.get('total'),
-      status: form.get('status'),
-      paiement: form.get('paiement')
+
+    const data = {
+      name: form.get("name"),
+      lieux: form.get("lieux"),
+      categorie: form.get("categorie"),
+      date: form.get("date"),
     };
-    setReservations([ ...reservations]);
-    e.target.reset();
+
+    try {
+      if (editId) {
+        await axios.put(`http://localhost:3333/events/${editId}`, data);
+        showToast("Événement modifié !");
+        setEditId(null);
+      } else {
+        await axios.post("http://localhost:3333/events", data);
+        showToast("Événement ajouté !");
+      }
+
+      e.target.reset();
+      loadEvents();
+    } catch (err: any) {
+      console.log(err.response?.data);
+      showToast("Erreur : " + (err.response?.data?.message || "inconnue"));
+    }
   };
 
-  const exportCSV = () => {
-    const header = Object.keys(reservations[0]).join(",");
-    const rows = reservations.map(r => Object.values(r).join(","));
-    const csv = [header, ...rows].join("");
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'reservations.csv';
-    link.click();
+
+  const deleteEvent = async (id: number) => {
+    try {
+      await axios.delete(`http://localhost:3333/events/${id}`);
+      showToast("Événement supprimé !");
+      loadEvents();
+    } catch (err) {
+      showToast("Erreur suppression");
+    }
   };
 
-  // const exportPDF = async () => {
-  //   const { jsPDF } = await import('jspdf');
-  //   const doc = new jsPDF();
-  //   let y = 10;
-  //   filtered.forEach(r => {
-  //     doc.text(`${r.id} | ${r.client} | ${r.date} | ${r.total}€ | ${r.status} | ${r.paiement}`, 10, y);
-  //     y += 10;
-  //   });
-  //   doc.save('reservations.pdf');
-  // };
+  
+  const editEvent = (ev: any) => {
+    const form: any = document.querySelector("form");
+    form.name.value = ev.name;
+    form.lieux.value = ev.lieux;
+    form.categorie.value = ev.categorie;
+    form.date.value = ev.date;
+    setEditId(ev.id);
+    showToast("Mode édition activé");
+  };
+
+ 
+  const pages = Math.ceil(events.length / perPage);
+  const paginated = events.slice((page - 1) * perPage, page * perPage);
 
   return (
     <div className="flex min-h-screen bg-gray-100">
 
+      {toast && (
+        <div className="fixed top-4 right-4 bg-black text-white px-4 py-2 rounded shadow">
+          {toast}
+        </div>
+      )}
+
       <aside className="w-64 bg-blue-500 text-white p-5 space-y-4">
         <h1 className="text-xl font-bold">MyRezApp</h1>
         <nav className="space-y-2 text-sm">
-          <p>Calendrier</p>
-          <p className="font-bold">Réservations</p>
-          <button>Clients</button>
-          <button>Services</button>
-              <button>Paiements </button>
+          <p className="font-bold">Événements</p>
         </nav>
       </aside>
 
       <main className="flex-1 p-6">
-        <header className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Mes réservations d'evenement </h2>
-          
+        <header className="mb-4">
+          <h2 className="text-2xl font-bold">Gestion des événements</h2>
         </header>
 
-        <form onSubmit={addReservation} className="flex gap-2 mb-4">
-          <input name="client" required placeholder="Client" className="border p-2 rounded" />
-          <input name="date" type="date" className="border p-2 rounded" />
-          <input name="total" placeholder="Total" className="border p-2 rounded" />
-          <select name="status" className="border p-2 rounded">
-            <option>Confirmée</option>
-            <option>Annulée</option>
-          </select>
-          <select name="paiement" className="border p-2 rounded">
-            <option>Payé</option>
-            <option>À payer</option>
-          </select>
-          <button className="bg-blue-500 text-white px-4 rounded">Ajouter</button>
+        {/* FORMULAIRE */}
+        <form onSubmit={saveEvent} className="flex gap-2 flex-wrap mb-4">
+
+          <input name="name" required placeholder="Nom de l'événement" className="border p-2 rounded" />
+          <input name="lieux" required placeholder="saisissez-Lieux" className="border p-2 rounded" />
+          <input name="categorie" required placeholder="saisissez-Catégorie" className="border p-2 rounded" />
+          <input name="date" required placeholder="saisissez votre date" className="border p-2 rounded" />
+
+          <button type="submit" className="bg-blue-500 text-white px-4 rounded">
+            {editId ? "Modifier" : "Ajouter"}
+          </button>
         </form>
 
-        <div className="flex gap-2 mb-4">
-          <input placeholder="Client" className="border p-2" onChange={e => setFilters({ ...filters, client: e.target.value })} />
-          <input type="date" className="border p-2" onChange={e => setFilters({ ...filters, date: e.target.value })} />
-          <select className="border p-2" onChange={e => setFilters({ ...filters, status: e.target.value })}>
-            <option value="">Tous</option>
-            <option value="Confirmée">Confirmée</option>
-            <option value="Annulée">Annulée</option>
-          </select>
-        </div>
-
-        <div className="bg-white rounded-xl shadow overflow-x-auto">
+        {/* TABLE */}
+        <div className="bg-white  text-black rounded-xl shadow overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-200">
               <tr>
-                <th>Ref</th>
-                <th>Client</th>
+                <th>Nom</th>
+                <th>Lieux</th>
+                <th>Catégorie</th>
                 <th>Date</th>
-                <th>Total</th>
-                <th>Statut</th>
-                <th>Paiement</th>
+                <th>Actions</th>
               </tr>
             </thead>
+
             <tbody>
-              {paginated.map(r => (
-                <tr key={r.id} className="border-b">
-                  <td>{r.id}</td>
-                  <td>{r.client}</td>
-                  <td>{r.date}</td>
-                  <td>{r.total}€</td>
-                  <td>{r.status}</td>
-                  <td>{r.paiement}</td>
+              {paginated.map(ev => (
+                <tr key={ev.id}>
+                  <td>{ev.name}</td>
+                  <td>{ev.lieux}</td>
+                  <td>{ev.categorie}</td>
+                  <td>{ev.jour}</td>
+
+                  <td className="flex gap-2">
+                    <button onClick={() => editEvent(ev)} className="text-blue-500">Modifier</button>
+                    <button onClick={() => deleteEvent(ev.id)} className="text-red-500">Supprimer</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
+
           </table>
         </div>
 
-        <div className="flex gap-2 justify-center mt-4">
+        {/* PAGINATION */}
+        <div className="flex justify-center gap-2 mt-4">
           {Array.from({ length: pages }).map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setPage(i + 1)}
-              className={`px-3 py-1 rounded ${page === i + 1 ? 'bg-blue-500 text-white' : 'bg-gray-300'}`}
-            >
-              {i + 1}
-            </button>
+            <button key={i} onClick={() => setPage(i + 1)}
+              className={`px-3 py-1 rounded ${page === i + 1 ? "bg-blue-500 text-white" : "bg-gray-300"}`}
+            >{i + 1}</button>
           ))}
         </div>
       </main>
